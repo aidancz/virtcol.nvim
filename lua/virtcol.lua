@@ -65,6 +65,12 @@ H.forward_next = function(lnum, virtcol)
 	return lnum + 1, virtcol_remainder
 end
 
+H.get_cursor = function()
+	return
+	vim.fn.line("."),
+	H.virtcol_cursor()
+end
+
 H.set_cursor = function(lnum, virtcol)
 	local col = vim.fn.virtcol2col(0, lnum, virtcol)
 	if virtcol >= vim.fn.virtcol({lnum, "$"}) then
