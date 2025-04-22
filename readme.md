@@ -1,1 +1,1 @@
-help functions that work with virtcol
+virtcol help functions
