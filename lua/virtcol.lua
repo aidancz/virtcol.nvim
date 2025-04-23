@@ -1,28 +1,50 @@
 local H = {}
 
 H.get_cursor = function()
+	local virtcol_min, virtcol_max = table.unpack(vim.fn.virtcol(".", true))
+	local curswant = vim.fn.getcurpos()[5]
+	local virtcol
+	if curswant >= virtcol_min and curswant <= virtcol_max then
+		virtcol = curswant
+	else
+		virtcol = virtcol_min
+	end
 	return
 	{
 		lnum = vim.fn.line("."),
-		virtcol = vim.fn.virtcol(".", true)[1],
+		virtcol = virtcol,
 	}
 end
 
+H.posgetchar = function(lnum, col)
+	return
+	vim.fn.strpart(
+		vim.fn.getline(lnum),
+		col - 1,
+		1,
+		true
+	)
+end
+
 H.set_cursor = function(pos)
+	local virtcol_max = vim.fn.virtcol({pos.lnum, "$"})
+
 	local col = vim.fn.virtcol2col(0, pos.lnum, pos.virtcol)
-	if pos.virtcol >= vim.fn.virtcol({pos.lnum, "$"}) then
-	-- fix virtcol2col
-		col = col + 1
+	if col == 0 then
+		col = 1
+	elseif pos.virtcol >= virtcol_max then
+		col = col + string.len(H.posgetchar(pos.lnum, col))
 	end
+	-- fix virtcol2col
 
 	local off
-	local virtcol_max = vim.fn.virtcol({pos.lnum, "$"})
-	if pos.virtcol > virtcol_max then
+	if pos.virtcol >= virtcol_max then
 		off = pos.virtcol - virtcol_max
 	else
-		off = 0
+		off = pos.virtcol - vim.fn.virtcol({pos.lnum, col}, true)[1]
 	end
 
+	-- vim.print({pos.lnum, col, off, pos.virtcol})
 	vim.fn.cursor({pos.lnum, col, off, pos.virtcol})
 end
 
@@ -35,17 +57,25 @@ H.width_editable_text = function()
 	return width_editable_text
 end
 
-H.virtcol_quotient = function(virtcol)
-	local width_editable_text = H.width_editable_text()
-	-- local virtcol_quotient = virtcol // width_editable_text
-	local virtcol_quotient = math.floor(virtcol / width_editable_text)
-	return virtcol_quotient
-end
+H.virtcol_division = function(virtcol)
+	local dividend = virtcol
+	local divisor = H.width_editable_text()
+	local quotient = math.floor(dividend / divisor) -- lua 5.1 does not support // operator
+	local remainder = dividend % divisor
 
-H.virtcol_remainder = function(virtcol)
-	local width_editable_text = H.width_editable_text()
-	local virtcol_remainder = virtcol % width_editable_text
-	return virtcol_remainder
+	if remainder == 0 then
+	-- edge case
+		quotient = quotient - 1
+		remainder = divisor
+	end
+
+	return
+	{
+		dividend = dividend,
+		divisor = divisor,
+		quotient = quotient,
+		remainder = remainder,
+	}
 end
 
 H.virtcol_max_real = function(lnum)
@@ -59,15 +89,13 @@ H.virtcol_max_real = function(lnum)
 end
 
 H.prev_pos = function(pos)
-	local width_editable_text = H.width_editable_text()
-	local virtcol_quotient = H.virtcol_quotient(pos.virtcol)
-	local virtcol_remainder = H.virtcol_remainder(pos.virtcol)
+	local division = H.virtcol_division(pos.virtcol)
 
-	if virtcol_quotient > 0 then
+	if division.quotient > 0 then
 		return
 		{
 			lnum = pos.lnum,
-			virtcol = pos.virtcol - width_editable_text,
+			virtcol = pos.virtcol - division.divisor,
 		}
 	end
 	if pos.lnum == 1 then
@@ -75,23 +103,30 @@ H.prev_pos = function(pos)
 		{
 		}
 	end
+
+	local division_prev_line_virtcol_max_real = H.virtcol_division(H.virtcol_max_real(pos.lnum - 1))
 	return
 	{
 		lnum = pos.lnum - 1,
-		virtcol = H.virtcol_quotient(H.virtcol_max_real(pos.lnum - 1)) * width_editable_text + virtcol_remainder,
+		virtcol = (
+			division_prev_line_virtcol_max_real.quotient
+			*
+			division_prev_line_virtcol_max_real.divisor
+			+
+			division.remainder
+		),
 	}
 end
 
 H.next_pos = function(pos)
-	local width_editable_text = H.width_editable_text()
-	local virtcol_quotient = H.virtcol_quotient(pos.virtcol)
-	local virtcol_remainder = H.virtcol_remainder(pos.virtcol)
+	local division = H.virtcol_division(pos.virtcol)
 
-	if virtcol_quotient < H.virtcol_quotient(H.virtcol_max_real(pos.lnum)) then
+	local division_current_line_virtcol_max_real = H.virtcol_division(H.virtcol_max_real(pos.lnum))
+	if division.quotient < division_current_line_virtcol_max_real.quotient then
 		return
 		{
 			lnum = pos.lnum,
-			virtcol = pos.virtcol + width_editable_text,
+			virtcol = pos.virtcol + division.divisor,
 		}
 	end
 	if pos.lnum == vim.fn.line("$") then
@@ -102,7 +137,7 @@ H.next_pos = function(pos)
 	return
 	{
 		lnum = pos.lnum + 1,
-		virtcol = virtcol_remainder,
+		virtcol = division.remainder,
 	}
 end
 
