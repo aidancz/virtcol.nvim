@@ -1,7 +1,7 @@
 local H = {}
 
 H.get_cursor = function()
-	local virtcol_min, virtcol_max = table.unpack(vim.fn.virtcol(".", true))
+	local virtcol_min, virtcol_max = unpack(vim.fn.virtcol(".", true))
 	local curswant = vim.fn.getcurpos()[5]
 	local virtcol
 	if curswant >= virtcol_min and curswant <= virtcol_max then
